@@ -1,0 +1,24 @@
+{
+  "name": "graphql-example",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "DEBUG=app:* nodemon index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "apollo-server": "^2.6.3",
+    "debug": "^4.1.1",
+    "graphql": "^14.3.1",
+    "knex": "^0.19.1",
+    "mssql": "^5.1.0",
+    "ramda": "^0.26.1"
+  },
+  "devDependencies": {
+    "eslint": "^6.1.0",
+    "nodemon": "^1.19.1"
+  }
+}
