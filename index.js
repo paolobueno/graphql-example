@@ -2,7 +2,7 @@
 'use strict';
 
 const {ApolloServer, gql} = require('apollo-server');
-const {decorateLeaves, runFakeQuery} = require('./utils');
+const {decorateLeaves, runFakeQuery, fakeDataLoader} = require('./utils');
 const {debugResolver} = require('./debug');
 const {propEq} = require('ramda');
 const {people, systems, projects} = require('./fixtures');
@@ -11,55 +11,54 @@ const db = require('knex')({
   client: 'mssql',
 });
 
-const SystemRepository = {
-  getAll: () => {
+class SystemRepository {
+  constructor() {
+    this.loader = fakeDataLoader('id', () => db.select('*').from('Systems'));
+  }
+  getAll() {
     const query = db.select('*').from('Systems');
     return runFakeQuery(query, systems);
-  },
-  getSingle: id => {
-    const query = db
-      .select('*')
-      .from('Systems')
-      .where('id', id);
-    return runFakeQuery(
-      query,
-      systems.find(({id: systemId}) => systemId === id),
+  }
+  async getSingle(id) {
+    await this.loader.load(id);
+    return systems.find(({id: systemId}) => systemId === id);
+  }
+}
+
+class ProjectRepository {
+  constructor() {
+    this.bySystemLoader = fakeDataLoader('systemId', () =>
+      db.select('*').from('Project'),
     );
-  },
-};
+  }
+  async getSingleBySystem(id) {
+    await this.bySystemLoader.load(id);
+    return projects.find(propEq('systemId', id));
+  }
+}
 
-const ProjectRepository = {
-  getSingleBySystem: id => {
-    const query = db
-      .select('*')
-      .from('Project')
-      .where('systemId', id);
-    return runFakeQuery(query, projects.find(propEq('systemId', id)));
-  },
-};
-
-const ClientRepository = {
-  getByProject: async id => {
-    const query = db
-      .select('*')
-      .from('Clients')
-      .where('projectId', id);
-
-    const res = await runFakeQuery(
-      query,
-      people.filter(propEq('projectId', id)),
-    );
-
-    const pQuery = id =>
+class ClientRepository {
+  constructor() {
+    this.loader = fakeDataLoader('projectId', () =>
       db
         .select('*')
-        .from('Profiles')
-        .where('id', id);
-    await Promise.all(res.map(p => runFakeQuery(pQuery(p.id), null, 6)));
+        .from('Clients')
+        .leftJoin('Profiles', 'Clients.personId', 'Profiles.id'),
+    );
 
-    return res;
-  },
-};
+    this.profileLoader = fakeDataLoader(
+      'id',
+      () => db.select('*').from('Profiles'),
+      6,
+    );
+  }
+  async getByProject(id) {
+    const clients = people.filter(propEq('projectId', id));
+    await this.loader.load(id);
+    await this.profileLoader.loadMany(clients.map(p => p.id));
+    return clients;
+  }
+}
 
 const typeDefs = gql`
   type Query {
@@ -89,20 +88,26 @@ const typeDefs = gql`
 
 const resolvers = {
   Query: {
-    systems: () => SystemRepository.getAll(),
-    system: (_, {id}) => SystemRepository.getSingle(id),
+    systems: (_, _params, {dataSources: {systems}}) => systems.getAll(),
+    system: (_, {id}, {dataSources: {systems}}) => systems.getSingle(id),
   },
   System: {
-    project: ({id}) => ProjectRepository.getSingleBySystem(id),
+    project: ({id}, _, {dataSources: {projects}}) =>
+      projects.getSingleBySystem(id),
   },
   Project: {
-    clients: ({id}) => ClientRepository.getByProject(id),
+    clients: ({id}, _, {dataSources: {clients}}) => clients.getByProject(id),
   },
 };
 
 const server = new ApolloServer({
   typeDefs,
   resolvers: decorateLeaves(debugResolver)(resolvers),
+  dataSources: () => ({
+    systems: new SystemRepository(),
+    projects: new ProjectRepository(),
+    clients: new ClientRepository(),
+  }),
 });
 
 server.listen(4000).then(({url}) => {
