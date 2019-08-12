@@ -4,7 +4,8 @@
 const {ApolloServer, gql} = require('apollo-server');
 const {decorateLeaves, runFakeQuery} = require('./utils');
 const {debugResolver} = require('./debug');
-const {operators, systems} = require('./fixtures');
+const {propEq} = require('ramda');
+const {people, systems, projects} = require('./fixtures');
 
 const db = require('knex')({
   client: 'mssql',
@@ -27,26 +28,36 @@ const SystemRepository = {
   },
 };
 
-const OperatorRepository = {
-  getBySystem: id => {
+const ProjectRepository = {
+  getSingleBySystem: id => {
     const query = db
       .select('*')
-      .from('Operators')
+      .from('Project')
       .where('systemId', id);
-    return runFakeQuery(
-      query,
-      operators.filter(({systemId}) => systemId === id),
-    );
+    return runFakeQuery(query, projects.find(propEq('systemId', id)));
   },
 };
 
-const PersonRepository = {
-  getSingle: id => {
+const ClientRepository = {
+  getByProject: async id => {
     const query = db
       .select('*')
-      .from('Profiles')
-      .where('id', id);
-    return runFakeQuery(query, '0620620601');
+      .from('Clients')
+      .where('projectId', id);
+
+    const res = await runFakeQuery(
+      query,
+      people.filter(propEq('projectId', id)),
+    );
+
+    const pQuery = id =>
+      db
+        .select('*')
+        .from('Profiles')
+        .where('id', id);
+    await Promise.all(res.map(p => runFakeQuery(pQuery(p.id), null, 6)));
+
+    return res;
   },
 };
 
@@ -59,14 +70,20 @@ const typeDefs = gql`
   type System {
     id: ID!
     type: String!
-    # ...
-    operators: [Operator!]
+    project: Project!
   }
 
-  type Operator {
+  type Project {
     id: ID!
-    name: String
-    phone: String
+    vessel: String!
+    clients: [Client!]!
+  }
+
+  type Client {
+    id: ID!
+    company: String!
+    name: String!
+    email: String!
   }
 `;
 
@@ -76,10 +93,10 @@ const resolvers = {
     system: (_, {id}) => SystemRepository.getSingle(id),
   },
   System: {
-    operators: ({id}) => OperatorRepository.getBySystem(id),
+    project: ({id}) => ProjectRepository.getSingleBySystem(id),
   },
-  Operator: {
-    phone: ({id}) => PersonRepository.getSingle(id),
+  Project: {
+    clients: ({id}) => ClientRepository.getByProject(id),
   },
 };
 

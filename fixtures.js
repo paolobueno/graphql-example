@@ -9,30 +9,45 @@ exports.systems = [
   },
 ];
 
-exports.operators = [
+exports.projects = [
+  {id: 1, vessel: 'NCC-1701-D Enterprise', systemId: 1},
+  {id: 2, vessel: 'SCV-70 White Base', systemId: 2},
+];
+
+exports.people = [
   {
     id: 1,
-    name: 'Rosalyn Koelpin',
-    systemId: 1,
+    name: 'Jean-Luc Picard',
+    email: 'picard@example.com',
+    company: 'Starfleet',
+    projectId: 1,
   },
   {
     id: 2,
-    name: 'Ole Weissnat',
-    systemId: 1,
+    name: 'Deanna Troi',
+    email: 'troi@example.com',
+    company: 'Starfleet',
+    projectId: 1,
   },
   {
     id: 3,
-    name: 'Anne Dijk',
-    systemId: 1,
+    name: 'Geordi la Forge',
+    email: 'geordi@example.com',
+    company: 'Starfleet',
+    projectId: 1,
   },
   {
     id: 4,
-    name: 'Fleur Dijkstra',
-    systemId: 2,
+    name: 'Amuro Ray',
+    email: 'amuro@example.com',
+    company: 'EFSF',
+    projectId: 2,
   },
   {
     id: 5,
-    name: 'Julia Jacobs',
-    systemId: 2,
+    name: 'Char Aznable',
+    company: 'Principality of Zeon',
+    email: 'redcomet@example.com',
+    projectId: 2,
   },
 ];

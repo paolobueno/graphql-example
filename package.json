@@ -18,6 +18,7 @@
     "graphql": "^14.3.1",
     "knex": "^0.19.1",
     "mssql": "^5.1.0",
+    "p-queue": "^6.1.0",
     "ramda": "^0.26.1"
   },
   "devDependencies": {
