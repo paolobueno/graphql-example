@@ -4,7 +4,7 @@
 const {ApolloServer, gql} = require('apollo-server');
 const {decorateLeaves, runFakeQuery, fakeDataLoader} = require('./utils');
 const {debugResolver} = require('./debug');
-const {propEq} = require('ramda');
+const {propEq, prop, pipe, then, pick} = require('ramda');
 const {people, systems, projects} = require('./fixtures');
 
 const db = require('knex')({
@@ -40,12 +40,8 @@ class ProjectRepository {
 class ClientRepository {
   constructor() {
     this.loader = fakeDataLoader('projectId', () =>
-      db
-        .select('*')
-        .from('Clients')
-        .leftJoin('Profiles', 'Clients.personId', 'Profiles.id'),
+      db.select('*').from('Clients'),
     );
-
     this.profileLoader = fakeDataLoader(
       'id',
       () => db.select('*').from('Profiles'),
@@ -53,10 +49,15 @@ class ClientRepository {
     );
   }
   async getByProject(id) {
-    const clients = people.filter(propEq('projectId', id));
+    const clients = people
+      .filter(propEq('projectId', id))
+      .map(pick(['id', 'company']));
     await this.loader.load(id);
-    await this.profileLoader.loadMany(clients.map(p => p.id));
     return clients;
+  }
+  async getProfileSingle(id) {
+    await this.profileLoader.load(id);
+    return pick(['id', 'name', 'email'])(people.find(propEq('id', id)));
   }
 }
 
@@ -86,17 +87,40 @@ const typeDefs = gql`
   }
 `;
 
+const fetchSystemOrUseParent = async (system, _, {dataSources: {systems}}) => {
+  if (system.type) {
+    return system;
+  }
+  return systems.getSingle(system.id);
+};
+
+const fetchProject = async ({systemId}, _, {dataSources: {projects}}) =>
+  projects.getSingleBySystem(systemId);
+
+const fetchProfile = async ({id}, _, {dataSources: {clients}}) =>
+  clients.getProfileSingle(id);
+
+// prettier-ignore
 const resolvers = {
   Query: {
     systems: (_, _params, {dataSources: {systems}}) => systems.getAll(),
-    system: (_, {id}, {dataSources: {systems}}) => systems.getSingle(id),
+    system: (_, {id}) => ({id}),
   },
   System: {
-    project: ({id}, _, {dataSources: {projects}}) =>
-      projects.getSingleBySystem(id),
+    type: pipe(fetchSystemOrUseParent, then(prop('type'))),
+    project: ({id}) => ({systemId: id}),
   },
   Project: {
-    clients: ({id}, _, {dataSources: {clients}}) => clients.getByProject(id),
+    id: pipe(fetchProject, then(prop('id'))),
+    vessel: pipe(fetchProject,then(prop('vessel'))),
+    clients: async ({systemId}, _, {dataSources: {clients, projects}}) => {
+      const p = await projects.getSingleBySystem(systemId);
+      return clients.getByProject(p.id);
+    },
+  },
+  Client: {
+    name: pipe(fetchProfile, then(prop('name'))),
+    email: pipe(fetchProfile, then(prop('email'))),
   },
 };
 
