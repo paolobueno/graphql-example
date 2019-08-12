@@ -2,7 +2,7 @@
 'use strict';
 
 const {ApolloServer, gql} = require('apollo-server');
-const {decorateLeaves, runFakeQuery, fakeDataLoader} = require('./utils');
+const {decorateLeaves, runFakeQuery, BaseRepository} = require('./utils');
 const {debugResolver} = require('./debug');
 const {propEq, prop, pipe, then, pick} = require('ramda');
 const {people, systems, projects} = require('./fixtures');
@@ -11,13 +11,20 @@ const db = require('knex')({
   client: 'mssql',
 });
 
-class SystemRepository {
-  constructor() {
-    this.loader = fakeDataLoader('id', () => db.select('*').from('Systems'));
+class SystemRepository extends BaseRepository {
+  constructor(ttl) {
+    super(ttl);
+    // prettier-ignore
+    this.loader = this.fakeDataLoader('id', () => db.select('*').from('Systems'));
   }
   getAll() {
+    if (this.getCacheObject('systems')) {
+      return systems;
+    }
     const query = db.select('*').from('Systems');
-    return runFakeQuery(query, systems);
+    runFakeQuery(query, systems);
+    this.setCacheObject('systems', {});
+    return systems;
   }
   async getSingle(id) {
     await this.loader.load(id);
@@ -25,11 +32,11 @@ class SystemRepository {
   }
 }
 
-class ProjectRepository {
-  constructor() {
-    this.bySystemLoader = fakeDataLoader('systemId', () =>
-      db.select('*').from('Project'),
-    );
+class ProjectRepository extends BaseRepository {
+  constructor(ttl) {
+    super(ttl);
+    // prettier-ignore
+    this.bySystemLoader = this.fakeDataLoader('systemId', () => db.select('*').from('Project'));
   }
   async getSingleBySystem(id) {
     await this.bySystemLoader.load(id);
@@ -37,16 +44,13 @@ class ProjectRepository {
   }
 }
 
-class ClientRepository {
-  constructor() {
-    this.loader = fakeDataLoader('projectId', () =>
-      db.select('*').from('Clients'),
-    );
-    this.profileLoader = fakeDataLoader(
-      'id',
-      () => db.select('*').from('Profiles'),
-      6,
-    );
+class ClientRepository extends BaseRepository {
+  constructor(ttl) {
+    super(ttl);
+    // prettier-ignore
+    this.loader = this.fakeDataLoader('projectId', () => db.select('*').from('Clients'));
+    // prettier-ignore
+    this.profileLoader = this.fakeDataLoader('id',() => db.select('*').from('Profiles'), 6);
   }
   async getByProject(id) {
     const clients = people
@@ -112,7 +116,7 @@ const resolvers = {
   },
   Project: {
     id: pipe(fetchProject, then(prop('id'))),
-    vessel: pipe(fetchProject,then(prop('vessel'))),
+    vessel: pipe(fetchProject, then(prop('vessel'))),
     clients: async ({systemId}, _, {dataSources: {clients, projects}}) => {
       const p = await projects.getSingleBySystem(systemId);
       return clients.getByProject(p.id);
